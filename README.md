@@ -12,22 +12,38 @@
 | 杨小舟蛾 | PSP |
 | 美国白蛾 | FWW |
 
-## 云端运行
+## 原始数据状态
+
+仓库已经包含代码、转换后的周表、天气 CSV 和已有训练输出。原始 `.xls` 诱虫记录是二进制文件，需要额外上传到：
+
+`raw_data/南京诱虫记录/`
+
+需要上传的 3 个文件见 `raw_data/README.md`。上传后，云端即可从原始数据重新生成模型输入并重训所有模型。
+
+## 云端从原始数据重训
 
 ```bash
 pip install -r requirements-cloud.txt
 python code/prepare_nanjing_multi_pest.py \
-  --xls-dir "【混沌科技·大田稻麦作物虫害程度自动监测系统】数据收集" \
-  --weather-source "虫情预测实验记录/nanjing_weekly_by_station_observed_feature_table.csv" \
+  --xls-dir raw_data/南京诱虫记录 \
+  --weather-source data/nanjing_weather_weekly_source.csv \
   --output data/nanjing_multi_pest_weekly.csv
 
-# 示例：选择三类，输出三个逐周归一化预测权重
+# 训练全部可用虫种
+python code/train_nanjing_multi_pest.py \
+  --input data/nanjing_multi_pest_weekly.csv \
+  --out-dir outputs/all_pests
+
+# 示例：只训练三类，输出三个逐周归一化预测权重
 python code/train_nanjing_multi_pest.py \
   --input data/nanjing_multi_pest_weekly.csv \
   --out-dir outputs/three_pests \
   --pests RLF SSB PSB
+```
 
-# 不传 --pests 时训练全部可用虫种
+如果暂时不上传 `.xls`，也可以直接用仓库中已经转换好的周表训练：
+
+```bash
 python code/train_nanjing_multi_pest.py \
   --input data/nanjing_multi_pest_weekly.csv \
   --out-dir outputs/all_pests
@@ -35,7 +51,7 @@ python code/train_nanjing_multi_pest.py \
 
 ## 两个核心脚本做什么
 
-`prepare_nanjing_multi_pest.py` 是原始数据转换器。它读取监测系统导出的 `.xls`，识别真实虫种，按网关和日期去重，把日诱虫量汇总为周诱虫量，再与南京周气象表合并，输出统一的 `PestCount` 长表。以后有新数据时，把新 `.xls` 放入原始数据目录并重新运行该脚本即可；它会递归扫描目录。
+`prepare_nanjing_multi_pest.py` 是原始数据转换器。它读取监测系统导出的 `.xls`，识别真实虫种，按网关和日期去重，把日诱虫量汇总为周诱虫量，再与南京周气象表合并，输出统一的 `PestCount` 长表。以后有新数据时，把新 `.xls` 放入 `raw_data/南京诱虫记录/` 并重新运行该脚本即可；它会递归扫描目录。
 
 `train_nanjing_multi_pest.py` 是训练器。它按虫种构造严格连续周的滞后和滚动特征，用较早年份训练、2024 年留出测试，比较多个模型，并为每个虫种保存 RMSE 最低的 `.joblib` 模型。这里的 `.joblib` 文件就是可直接加载使用的训练权重。
 
@@ -55,7 +71,7 @@ python code/predict_nanjing_multi_pest.py \
 
 ## 新数据更新流程
 
-1. 将平台新导出的 `.xls` 放入 `raw_data/`，保留原来的表头结构。
+1. 将平台新导出的 `.xls` 放入 `raw_data/南京诱虫记录/`，保留原来的表头结构。
 2. 更新南京天气周表；若暂时没有新天气，缺失字段会由模型中位数填补，但预测质量可能下降。
 3. 重新运行转换脚本，生成更新后的周表。
 4. 只需日常预测时，直接运行预测脚本并复用现有权重。
@@ -64,4 +80,3 @@ python code/predict_nanjing_multi_pest.py \
 每类虫分别比较 RandomForest、ExtraTrees、GradientBoosting、Stacking；安装可选依赖后还会自动加入 XGBoost、LightGBM 和 CatBoost。测试严格使用 2024 年，训练使用更早数据。
 
 主要输出：`model_metrics.csv`、`predictions_by_station.csv`、`pest_prediction_weights.csv` 和每虫种最佳模型文件。权重定义为同一预测周内各虫种预测总量占所选虫种预测总量之比，因此选择三类时每周恰好输出三个权重且总和为 1。
-
