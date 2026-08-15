@@ -23,7 +23,7 @@ FEATURES = ["Year", "Week", *WEATHER, "PestCount", "PestCount_lag1", "PestCount_
             *[x for c in WEATHER for x in (f"{c}_lag1", f"{c}_roll3_mean")]]
 
 
-def make_features(observed: pd.DataFrame, horizon: int) -> pd.DataFrame:
+def make_features(observed: pd.DataFrame, horizon: int, require_target: bool = True) -> pd.DataFrame:
     generated = []
     for (code, location), part in observed.groupby(["PestCode", "Location"], sort=False):
         part = part.sort_values("week_start").set_index("week_start")
@@ -39,7 +39,8 @@ def make_features(observed: pd.DataFrame, horizon: int) -> pd.DataFrame:
         grid["Target_next"] = grid["PestCount"].shift(-horizon)
         grid["target_date"] = grid.index + pd.Timedelta(weeks=horizon)
         generated.append(grid.reset_index())
-    return pd.concat(generated, ignore_index=True).dropna(subset=["PestCount", "Target_next"])
+    result = pd.concat(generated, ignore_index=True).dropna(subset=["PestCount"])
+    return result.dropna(subset=["Target_next"]) if require_target else result
 
 
 def candidates(seed: int):
