@@ -37,25 +37,25 @@ jobs:
             --weather-source data/nanjing_weather_weekly_source.csv \
             --output data/nanjing_multi_pest_weekly.csv
 
-      - name: Train all pest models
+      - name: Train all pest model weights
         run: |
           python code/train_nanjing_multi_pest.py \
             --input data/nanjing_multi_pest_weekly.csv \
             --out-dir outputs/all_pests
 
-      - name: Train three rice-pest models
+      - name: Train rice pest model weights
         run: |
           python code/train_nanjing_multi_pest.py \
             --input data/nanjing_multi_pest_weekly.csv \
-            --out-dir outputs/three_pests \
+            --out-dir outputs/rice_pests \
             --pests RLF SSB PSB
 
-      - name: Upload training artifacts
+      - name: Upload model weight artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: nanjing-pest-training-artifacts
+          name: nanjing-pest-model-weights
           path: |
             data/nanjing_multi_pest_weekly.csv
             data/nanjing_pest_inventory.csv
             outputs/all_pests/
-            outputs/three_pests/
+            outputs/rice_pests/
