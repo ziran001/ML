@@ -1,4 +1,4 @@
-"""Train one next-week regressor per pest and output normalized pest weights."""
+"""Train one next-week regressor per pest and save reusable model weights."""
 
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ def main():
     p.add_argument("--seed", type=int, default=42); args = p.parse_args(); args.out_dir.mkdir(parents=True, exist_ok=True)
     raw = pd.read_csv(args.input); raw["week_start"] = pd.to_datetime(raw["week_start"])
     if args.pests: raw = raw[raw.PestCode.isin(args.pests)]
-    data = make_features(raw, args.horizon); all_metrics=[]; all_predictions=[]
+    data = make_features(raw, args.horizon); all_metrics=[]; all_predictions=[]; saved_models=[]
     for code, pest in data.groupby("PestCode"):
         train=pest[pest.target_date.dt.year < args.test_year]; test=pest[pest.target_date.dt.year == args.test_year]
         if len(train) < 30 or len(test) < 10: print(f"skip {code}: train={len(train)}, test={len(test)}"); continue
@@ -89,19 +89,18 @@ def main():
                  "R2":r2_score(test.Target_next,pred),"RMSE":mean_squared_error(test.Target_next,pred)**.5,
                  "MAE":mean_absolute_error(test.Target_next,pred)}; all_metrics.append(row)
             if best is None or row["RMSE"] < best[0]: best=(row["RMSE"],name,model,pred)
-        _,name,model,pred=best; joblib.dump(model,args.out_dir/f"model_{code}_{name}.joblib")
+        _,name,model,pred=best
+        model_path = args.out_dir/f"model_{code}_{name}.joblib"
+        joblib.dump(model, model_path)
+        saved_models.append({"PestCode": code, "BestModel": name, "ModelFile": model_path.name})
         out=test[["PestSpecies","PestCode","Location","week_start","target_date","Target_next"]].copy()
         out["BestModel"]=name; out["Prediction"]=pred; all_predictions.append(out)
     metrics=pd.DataFrame(all_metrics); predictions=pd.concat(all_predictions,ignore_index=True)
-    # The requested weights are shares of predicted abundance for each target week.
-    totals=predictions.groupby(["target_date","PestCode"],as_index=False).Prediction.sum()
-    totals["PredictionWeight"]=totals.Prediction/totals.groupby("target_date").Prediction.transform("sum").replace(0,np.nan)
     metrics.to_csv(args.out_dir/"model_metrics.csv",index=False,encoding="utf-8-sig")
     predictions.to_csv(args.out_dir/"predictions_by_station.csv",index=False,encoding="utf-8-sig")
-    totals.to_csv(args.out_dir/"pest_prediction_weights.csv",index=False,encoding="utf-8-sig")
+    pd.DataFrame(saved_models).to_csv(args.out_dir/"trained_model_files.csv",index=False,encoding="utf-8-sig")
     (args.out_dir/"feature_names.json").write_text(json.dumps(FEATURES,ensure_ascii=False,indent=2),encoding="utf8")
     print(metrics.sort_values(["PestCode","RMSE"]).groupby("PestCode").head(1).to_string(index=False))
 
 
 if __name__ == "__main__": main()
-
