@@ -86,7 +86,7 @@ latest_pest_predictions.csv             每种害虫预测总量
 latest_pest_predictions_by_station.csv  每个监测点的预测虫量
 ```
 
-这里不再输出三类虫之间的相对占比。`Prediction` 就是模型预测的下一周虫量。
+`Prediction` 就是模型预测的下一周虫量。
 
 ## 新数据怎么处理
 
