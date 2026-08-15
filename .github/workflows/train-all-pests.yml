@@ -1,0 +1,61 @@
+name: Train all Nanjing pest models
+
+on:
+  workflow_dispatch:
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-cloud.txt
+
+      - name: Check raw workbooks
+        shell: bash
+        run: |
+          test -d "raw_data/南京诱虫记录"
+          count=$(find "raw_data/南京诱虫记录" -type f -name "*.xls" | wc -l)
+          if [ "$count" -lt 3 ]; then
+            echo "Expected at least 3 raw .xls workbooks in raw_data/南京诱虫记录, found $count."
+            exit 1
+          fi
+
+      - name: Build weekly model input from raw data
+        run: |
+          python code/prepare_nanjing_multi_pest.py \
+            --xls-dir "raw_data/南京诱虫记录" \
+            --weather-source data/nanjing_weather_weekly_source.csv \
+            --output data/nanjing_multi_pest_weekly.csv
+
+      - name: Train all pest models
+        run: |
+          python code/train_nanjing_multi_pest.py \
+            --input data/nanjing_multi_pest_weekly.csv \
+            --out-dir outputs/all_pests
+
+      - name: Train three rice-pest models
+        run: |
+          python code/train_nanjing_multi_pest.py \
+            --input data/nanjing_multi_pest_weekly.csv \
+            --out-dir outputs/three_pests \
+            --pests RLF SSB PSB
+
+      - name: Upload training artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nanjing-pest-training-artifacts
+          path: |
+            data/nanjing_multi_pest_weekly.csv
+            data/nanjing_pest_inventory.csv
+            outputs/all_pests/
+            outputs/three_pests/
