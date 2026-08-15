@@ -20,7 +20,18 @@
 
 需要上传的 3 个文件见 `raw_data/README.md`。上传后，云端即可从原始数据重新生成模型输入并重训所有模型。
 
-## 云端从原始数据重训
+## GitHub 网页一键重训
+
+上传 3 个 `.xls` 后，打开 GitHub 仓库的 `Actions` 页面，选择 `Train all Nanjing pest models`，点击 `Run workflow`。工作流会自动：
+
+1. 安装 Python 依赖。
+2. 从 `raw_data/南京诱虫记录/` 读取原始 `.xls`。
+3. 重新生成 `data/nanjing_multi_pest_weekly.csv`。
+4. 训练全部虫种模型到 `outputs/all_pests/`。
+5. 训练三类水稻害虫 `RLF SSB PSB` 到 `outputs/three_pests/`。
+6. 把训练产物打包成 GitHub Actions artifact 供下载。
+
+## 云端命令行重训
 
 ```bash
 pip install -r requirements-cloud.txt
