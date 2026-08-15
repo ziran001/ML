@@ -1,6 +1,8 @@
-# 南京多虫种时序预测
+# 南京虫害预测模型
 
-从南京诱虫记录构建“当前周与历史周信息 → 下一自然周虫量”的模型。代码使用通用 `PestCount`；虫种保留真实名称和英文缩写。
+本工程从南京诱虫记录训练虫害预测模型。每一种害虫单独训练一个模型，训练完成后得到对应的 `.joblib` 文件；这个 `.joblib` 就是后续直接预测时要加载的模型权重。
+
+代码不沿用印度论文中的 `BPH` 字段名，统一使用真实虫种名称和通用字段 `PestCount`。
 
 | 虫种 | 缩写 |
 |---|---|
@@ -12,82 +14,85 @@
 | 杨小舟蛾 | PSP |
 | 美国白蛾 | FWW |
 
-## 原始数据状态
+## 文件结构
 
-仓库已经包含代码、转换后的周表、天气 CSV 和已有训练输出。原始 `.xls` 诱虫记录是二进制文件，需要额外上传到：
+```text
+code/prepare_nanjing_multi_pest.py   原始 .xls 转周度训练表
+code/train_nanjing_multi_pest.py     训练每种害虫的模型权重
+code/predict_nanjing_multi_pest.py   加载权重并预测下一周虫量
+data/nanjing_multi_pest_weekly.csv   已转换好的周度数据
+raw_data/南京诱虫记录/                原始 .xls 上传位置
+outputs/                             训练输出目录
+```
 
-`raw_data/南京诱虫记录/`
+## 云端重新训练
 
-需要上传的 3 个文件见 `raw_data/README.md`。上传后，云端即可从原始数据重新生成模型输入并重训所有模型。
+先把 3 个原始 `.xls` 上传到 `raw_data/南京诱虫记录/`。文件名见 `raw_data/README.md`。
 
-## GitHub 网页一键重训
-
-上传 3 个 `.xls` 后，打开 GitHub 仓库的 `Actions` 页面，选择 `Train all Nanjing pest models`，点击 `Run workflow`。工作流会自动：
-
-1. 安装 Python 依赖。
-2. 从 `raw_data/南京诱虫记录/` 读取原始 `.xls`。
-3. 重新生成 `data/nanjing_multi_pest_weekly.csv`。
-4. 训练全部虫种模型到 `outputs/all_pests/`。
-5. 训练三类水稻害虫 `RLF SSB PSB` 到 `outputs/three_pests/`。
-6. 把训练产物打包成 GitHub Actions artifact 供下载。
-
-## 云端命令行重训
+然后运行：
 
 ```bash
 pip install -r requirements-cloud.txt
+
 python code/prepare_nanjing_multi_pest.py \
   --xls-dir raw_data/南京诱虫记录 \
   --weather-source data/nanjing_weather_weekly_source.csv \
   --output data/nanjing_multi_pest_weekly.csv
 
-# 训练全部可用虫种
 python code/train_nanjing_multi_pest.py \
   --input data/nanjing_multi_pest_weekly.csv \
   --out-dir outputs/all_pests
-
-# 示例：只训练三类，输出三个逐周归一化预测权重
-python code/train_nanjing_multi_pest.py \
-  --input data/nanjing_multi_pest_weekly.csv \
-  --out-dir outputs/three_pests \
-  --pests RLF SSB PSB
 ```
 
-如果暂时不上传 `.xls`，也可以直接用仓库中已经转换好的周表训练：
+只训练三种水稻害虫：
 
 ```bash
 python code/train_nanjing_multi_pest.py \
   --input data/nanjing_multi_pest_weekly.csv \
-  --out-dir outputs/all_pests
+  --out-dir outputs/rice_pests \
+  --pests RLF SSB PSB
 ```
 
-## 两个核心脚本做什么
+训练完成后，`outputs/rice_pests/` 或 `outputs/all_pests/` 中会出现：
 
-`prepare_nanjing_multi_pest.py` 是原始数据转换器。它读取监测系统导出的 `.xls`，识别真实虫种，按网关和日期去重，把日诱虫量汇总为周诱虫量，再与南京周气象表合并，输出统一的 `PestCount` 长表。以后有新数据时，把新 `.xls` 放入 `raw_data/南京诱虫记录/` 并重新运行该脚本即可；它会递归扫描目录。
+```text
+model_RLF_*.joblib
+model_SSB_*.joblib
+model_PSB_*.joblib
+model_metrics.csv
+trained_model_files.csv
+predictions_by_station.csv
+feature_names.json
+```
 
-`train_nanjing_multi_pest.py` 是训练器。它按虫种构造严格连续周的滞后和滚动特征，用较早年份训练、2024 年留出测试，比较多个模型，并为每个虫种保存 RMSE 最低的 `.joblib` 模型。这里的 `.joblib` 文件就是可直接加载使用的训练权重。
+其中 `model_*.joblib` 是模型权重，`trained_model_files.csv` 说明每种害虫最终选中了哪个模型文件。
 
-## 使用训练好的权重预测最新数据
+## 使用权重预测
 
-仓库同时提供 `predict_nanjing_multi_pest.py`。它加载每个虫种的最佳 `.joblib` 文件，对输入表中每个监测点的最新一周预测下一周虫量，并输出所选虫种的归一化权重。
+拿训练好的 `.joblib` 模型预测最新一周之后的虫量：
 
 ```bash
 python code/predict_nanjing_multi_pest.py \
   --input data/nanjing_multi_pest_weekly.csv \
-  --model-dir outputs/three_pests \
+  --model-dir outputs/rice_pests \
   --pests RLF SSB PSB \
-  --output outputs/latest_three_pest_weights.csv
+  --output outputs/rice_pests/latest_pest_predictions.csv
 ```
 
-输出包括总体权重文件和带 `_by_station` 后缀的逐监测点预测文件。三个权重表示三类虫预测总量的相对占比，不是模型内部特征重要性。
+输出：
 
-## 新数据更新流程
+```text
+latest_pest_predictions.csv             每种害虫预测总量
+latest_pest_predictions_by_station.csv  每个监测点的预测虫量
+```
 
-1. 将平台新导出的 `.xls` 放入 `raw_data/南京诱虫记录/`，保留原来的表头结构。
-2. 更新南京天气周表；若暂时没有新天气，缺失字段会由模型中位数填补，但预测质量可能下降。
-3. 重新运行转换脚本，生成更新后的周表。
-4. 只需日常预测时，直接运行预测脚本并复用现有权重。
-5. 数据积累到新的完整季节或新年度后，再运行训练脚本更新权重。
+这里不再输出三类虫之间的相对占比。`Prediction` 就是模型预测的下一周虫量。
 
-每类虫分别比较 RandomForest、ExtraTrees、GradientBoosting、Stacking；安装可选依赖后还会自动加入 XGBoost、LightGBM 和 CatBoost。测试严格使用 2024 年，训练使用更早数据。
+## 新数据怎么处理
 
-主要输出：`model_metrics.csv`、`predictions_by_station.csv`、`pest_prediction_weights.csv` 和每虫种最佳模型文件。权重定义为同一预测周内各虫种预测总量占所选虫种预测总量之比，因此选择三类时每周恰好输出三个权重且总和为 1。
+1. 把新导出的 `.xls` 放进 `raw_data/南京诱虫记录/`。
+2. 运行 `prepare_nanjing_multi_pest.py`，重新生成 `data/nanjing_multi_pest_weekly.csv`。
+3. 如果只是要用已有权重预测，直接运行 `predict_nanjing_multi_pest.py`。
+4. 如果新数据已经积累到一个新季节或新年度，再运行 `train_nanjing_multi_pest.py` 重新训练权重。
+
+GitHub Actions 中的 `Train all Nanjing pest models` 也会执行同样流程，并把训练好的模型权重作为 artifact 提供下载。
