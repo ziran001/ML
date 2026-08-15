@@ -16,7 +16,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--input", type=Path, required=True, help="Weekly CSV produced by prepare script")
     p.add_argument("--model-dir", type=Path, required=True)
-    p.add_argument("--output", type=Path, default=Path("outputs/latest_pest_weights.csv"))
+    p.add_argument("--output", type=Path, default=Path("outputs/latest_pest_predictions.csv"))
     p.add_argument("--pests", nargs="*", help="PestCode values; omit to use every model in model-dir")
     p.add_argument("--horizon", type=int, default=1)
     args = p.parse_args()
@@ -43,8 +43,6 @@ def main():
         raise ValueError("No matching pest model could be used")
     station = pd.concat(predictions, ignore_index=True)
     totals = station.groupby(["target_date", "PestCode"], as_index=False).Prediction.sum()
-    denominator = totals.groupby("target_date").Prediction.transform("sum")
-    totals["PredictionWeight"] = totals.Prediction / denominator.replace(0, np.nan)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     totals.to_csv(args.output, index=False, encoding="utf-8-sig")
     station.to_csv(args.output.with_name(args.output.stem + "_by_station.csv"), index=False, encoding="utf-8-sig")
@@ -53,4 +51,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
